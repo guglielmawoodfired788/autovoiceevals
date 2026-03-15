@@ -1,119 +1,99 @@
-# autoresearch for voice AI
+# autovoiceevals — protocol
 
-This is an experiment to have an AI agent autonomously improve a voice AI agent's system prompt through iterative experimentation. The pattern is directly adapted from [karpathy/autoresearch](https://github.com/karpathy/autoresearch).
+Adapted from [karpathy/autoresearch](https://github.com/karpathy/autoresearch). Same pattern, different domain.
 
-## The analogy
-
-| autoresearch (ML training) | autovoiceevals (voice AI) |
+| autoresearch | autovoiceevals |
 |---|---|
-| `train.py` (the code) | System prompt (the artifact) |
-| `val_bpb` (the metric) | Composite score against adversarial eval suite |
-| 5-minute training run | Run N adversarial scenarios |
-| Lower is better | Higher is better |
-| `prepare.py` (fixed eval) | Fixed eval suite (generated once at start) |
+| `train.py` — code the agent edits | System prompt — artifact being optimized |
+| `val_bpb` — lower is better | Composite eval score — higher is better |
+| 5-minute training run | Run N adversarial scenarios (~3 min) |
+| `prepare.py` — fixed eval harness | Fixed eval suite — generated once at startup |
 | `results.tsv` | `results.tsv` |
 
-## How it works
+## Three things that matter
 
-Three things that matter:
+- **Eval suite** — generated once at startup. Fixed set of adversarial scenarios with caller personas, attack strategies, and pass/fail criteria. This is the validation set. Never modified during a run.
+- **System prompt** — the single artifact being optimized. The AI proposes ONE change per experiment. Everything is fair game: add rules, reword instructions, remove redundancy, restructure.
+- **`results.tsv`** — experiment log. Tab-separated: experiment, score, csat, pass_rate, prompt_len, status, description.
 
-- **Eval suite** — generated once at startup. A fixed set of adversarial scenarios (caller personas with attack strategies, voice characteristics, and evaluation criteria). This is the "validation set." Not modified during the run.
-- **System prompt** — the single artifact being optimized. The AI proposes ONE change per experiment. Everything is fair game: add rules, reword instructions, remove redundancy, restructure sections.
-- **`results.tsv`** — experiment log. Tab-separated: experiment number, score, CSAT, pass rate, prompt length, status, description.
+## The loop
 
-## The experiment loop
+```
+SETUP:
+  1. Connect to voice platform, read current system prompt
+  2. Generate fixed eval suite (adversarial scenarios)
+  3. Run baseline, record score
 
 LOOP FOREVER:
-
-1. Look at the current best prompt and recent eval results
-2. AI proposes ONE specific change to the prompt (add a rule, reword something, remove something)
-3. Apply the modified prompt to the Vapi assistant via API
-4. Run the full eval suite against the modified agent
-5. Compute the metric (average composite score across all scenarios)
-6. If score improved → **KEEP** the change, this is the new best prompt
-7. If score is equal but prompt is shorter → **KEEP** (simplicity wins, like in autoresearch)
-8. If score is worse or equal → **DISCARD**, revert to previous best prompt
-9. Log the result to `results.tsv`
-10. Never stop. Never ask. Run until manually interrupted.
+  4. AI proposes ONE change to the prompt
+  5. Push modified prompt to the platform via API
+  6. Run full eval suite against the modified agent
+  7. Score improved?        → KEEP
+  8. Score equal, shorter?  → KEEP (simplicity wins)
+  9. Score equal or worse?  → DISCARD, revert to previous best
+  10. Log to results.tsv
+  11. Go to 4. Never stop. Never ask. Run until interrupted.
+```
 
 ## Scoring
 
-Each scenario in the eval suite produces a composite score (weights are configurable in `config.yaml`):
-
 ```
-composite = should_weight * should_score + should_not_weight * should_not_score + latency_weight * latency_score
+composite = should_weight * should_score
+          + should_not_weight * should_not_score
+          + latency_weight * latency_score
 ```
 
-Default weights: `0.50 / 0.35 / 0.15`
+Default weights: `0.50 / 0.35 / 0.15`. Configurable in `config.yaml`.
 
-- `should_score`: fraction of "agent should do X" criteria the agent passed
-- `should_not_score`: fraction of "agent should NOT do X" criteria the agent passed
-- `latency_score`: 1.0 if avg response < threshold (default 3s), else 0.5
+- `should_score` — fraction of "agent should do X" criteria passed
+- `should_not_score` — fraction of "agent should NOT do X" criteria passed
+- `latency_score` — 1.0 if avg response < threshold, else 0.5
 
-The experiment metric is the **average composite score** across all eval scenarios.
+Experiment metric = average composite across all eval scenarios.
 
 ## What the AI can change
 
-The AI modifies the system prompt. Everything is fair game:
-
-- Add explicit rules ("NEVER provide medical advice")
+The system prompt. Everything is fair game:
+- Add explicit rules, boundary definitions, escalation procedures
 - Reword existing instructions for clarity
 - Remove redundant or ineffective text
-- Restructure sections for better flow
-- Add/remove examples
-- Change tone instructions
-- Add boundary definitions
-- Add escalation procedures
+- Restructure sections, add/remove examples
+- Change tone, add constraints
 
 ## What the AI cannot change
 
 - The eval suite (fixed at startup)
 - The scoring formula
-- The Vapi agent's model or provider
+- The agent's model or provider
 - The conversation simulation logic
 
 ## Simplicity criterion
 
-All else being equal, simpler is better. A small improvement that adds ugly complexity is not worth it. A prompt that achieves the same score with fewer characters is a win. When evaluating whether to keep a change, the system weighs the score improvement against prompt length — if the score didn't improve but the prompt got shorter, that's a keep.
+All else being equal, simpler is better. A prompt that achieves the same score with fewer characters is a win. A small improvement that adds ugly complexity is not worth it. Removing something and getting equal results is a great outcome.
 
-## Output format
+## On stop
 
-After each experiment, the system prints:
+When interrupted (Ctrl+C or max_experiments reached):
+1. Print summary — experiments, kept/discarded, score progression
+2. Restore original prompt on the platform
+3. Save best prompt to `results/best_prompt.txt`
+4. Save full log to `results/autoresearch.json`
 
-```
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  EXPERIMENT 7
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  [add] Add explicit boundary for insurance questions
-  Prompt: 1036 → 1098 chars
-    [PASS] 0.875 [████████████████░░░░] Heavy Accent Scheduler
-    [FAIL] 0.663 [█████████████░░░░░░░] Rapid Topic Hijacker
-    ...
+## Providers
 
-  Result: score=0.812 (▲0.023) csat=78 pass=7/8
-  Decision: KEEP (best=0.812, prompt=1098 chars)
-  Time: 142s
-```
+| Provider | Conversations | Prompt read/write |
+|---|---|---|
+| Vapi | Live via Chat API | GET/PATCH assistant |
+| Smallest AI | Simulated via Claude + system prompt | GET/PATCH workflow |
 
-## results.tsv format
+## results.tsv
 
 ```
-experiment	score	csat	pass_rate	prompt_len	status	description
-0	0.789000	69.0	0.700	1036	keep	baseline
-1	0.812000	78.0	0.875	1098	keep	add insurance boundary rule
-2	0.805000	75.0	0.750	1150	discard	add detailed escalation procedure
-3	0.820000	80.0	0.875	1085	keep	simplify medical advice rule
+experiment  score     csat  pass_rate  prompt_len  status   description
+0           0.875     88.4  0.800      6615        keep     baseline
+1           0.712     81.4  0.800      6962        discard  Add confusion-detection instructions
+2           0.925     87.6  1.000      7047        keep     Add impossible date/time handling
+3           0.900     86.4  1.000      6670        discard  Remove redundant personality guidance
+4           0.925     88.4  1.000      4901        keep     Simplify conversation flow
+5           0.925     90.4  1.000      4719        keep     Remove meta-commentary section
 ```
-
-## Running
-
-```bash
-python main.py research [--config config.yaml]
-python main.py research --resume    # resume from last run
-```
-
-The loop runs until Ctrl+C. When stopped, it:
-1. Prints a summary (experiments run, kept/discarded, score progression)
-2. Restores the original prompt on the Vapi assistant
-3. Saves the best prompt to `results/best_prompt.txt`
-4. Saves the full experiment log to `results/autoresearch.json`
