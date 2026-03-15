@@ -60,6 +60,36 @@ class LLMClient:
                     raise
         return ""  # unreachable, but keeps type checkers happy
 
+    def chat(
+        self,
+        system: str,
+        messages: list[dict],
+        max_tokens: int = 500,
+    ) -> str:
+        """Multi-turn conversation. Used for simulated agent conversations.
+
+        Args:
+            system: System prompt (the voice agent's prompt).
+            messages: Conversation history as [{"role": "user/assistant", "content": "..."}].
+            max_tokens: Max response tokens.
+        """
+        for attempt in range(self.max_retries + 1):
+            try:
+                r = self._client.messages.create(
+                    model=self.model,
+                    max_tokens=max_tokens,
+                    system=system,
+                    messages=messages,
+                )
+                return r.content[0].text
+            except Exception as e:
+                if attempt < self.max_retries:
+                    wait = min(2 ** attempt, 30)
+                    time.sleep(wait)
+                else:
+                    raise
+        return ""
+
     def call_json(self, system: str, user: str, max_tokens: int = 2048):
         """Call Claude and parse the response as JSON."""
         raw = self.call(system, user, max_tokens)
