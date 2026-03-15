@@ -11,4 +11,6 @@ build/
 .mypy_cache/
 .ruff_cache/
 results_vapi/
+results_vapi_20/
+results_*/
 LAUNCH_POST.md
