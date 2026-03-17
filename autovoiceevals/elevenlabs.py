@@ -31,21 +31,12 @@ from .models import Turn, Conversation, Scenario
 
 BASE_URL = "https://api.elevenlabs.io/v1"
 
-END_PHRASES = [
-    "have a great day",
-    "goodbye",
-    "talk to you soon",
-    "take care",
-    "is there anything else",
-]
-
 
 class ElevenLabsClient:
     """Client for ElevenLabs ConvAI platform."""
 
-    def __init__(self, api_key: str, end_phrases: list[str] | None = None):
+    def __init__(self, api_key: str):
         self.api_key = api_key
-        self.end_phrases = end_phrases or END_PHRASES
         self._headers = {
             "xi-api-key": api_key,
             "Content-Type": "application/json",
