@@ -118,6 +118,7 @@ class ElevenLabsClient:
         max_turns: int = 12,
         scenario: Scenario | None = None,
         dynamic_variables: dict | None = None,
+        simulate_timeout_secs: int | None = None,
     ) -> Conversation:
         """Run a conversation via ElevenLabs simulate-conversation endpoint.
 
@@ -135,9 +136,13 @@ class ElevenLabsClient:
             max_turns:         Maximum conversation turns (maps to new_turns_limit).
             scenario:          Full Scenario object for richer persona construction.
                                If None, falls back to a basic persona from caller_turns.
-            dynamic_variables: Variables injected into the agent's tools at runtime
-                               (e.g. system__caller_id, system__call_sid for Twilio
-                               agents). Required if the agent's tools reference these.
+            dynamic_variables:      Variables injected into the agent's tools at runtime
+                                    (e.g. system__caller_id, system__call_sid for Twilio
+                                    agents). Required if the agent's tools reference these.
+            simulate_timeout_secs:  Total HTTP timeout for the simulate-conversation call.
+                                    Defaults to 300s. Increase for longer conversations
+                                    (e.g. 600 for 5-7 minute flows). ElevenLabs handles
+                                    termination server-side so a generous value is safe.
         """
         conv = Conversation(scenario_id=scenario_id)
 
@@ -152,13 +157,15 @@ class ElevenLabsClient:
             "new_turns_limit": max_turns,
         }
 
+        timeout = simulate_timeout_secs or 300
+
         try:
             t0 = time.time()
             resp = requests.post(
                 f"{BASE_URL}/convai/agents/{assistant_id}/simulate-conversation",
                 headers=self._headers,
                 json=payload,
-                timeout=180,  # full conversation can take a while
+                timeout=timeout,
             )
             wall_time_ms = (time.time() - t0) * 1000
 
@@ -169,7 +176,7 @@ class ElevenLabsClient:
             data = resp.json()
 
         except requests.exceptions.Timeout:
-            conv.error = "Timeout (>120s)"
+            conv.error = f"Timeout (>{timeout}s)"
             return conv
         except Exception as e:
             conv.error = str(e)[:200]

@@ -49,6 +49,7 @@ def _eval_scenario(
         scenario.caller_script, cfg.conversation.max_turns,
         scenario=scenario,
         dynamic_variables=cfg.assistant.dynamic_variables,
+        simulate_timeout_secs=cfg.conversation.simulate_timeout_secs,
     )
 
     try:

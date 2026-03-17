@@ -66,5 +66,9 @@ autoresearch:
   improvement_threshold: 0.005
   max_experiments: 20
 
+conversation:
+  max_turns: 12
+  simulate_timeout_secs: 300   # increase for longer flows (e.g. 600 for 5-7 min calls)
+
 scoring:
   latency_threshold_ms: 4000   # simulate-conversation is slower than turn-by-turn

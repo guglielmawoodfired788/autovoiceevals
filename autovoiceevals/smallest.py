@@ -112,6 +112,7 @@ class SmallestClient:
         max_turns: int = 12,
         scenario=None,
         dynamic_variables=None,
+        simulate_timeout_secs=None,
     ) -> Conversation:
         """Run a simulated multi-turn conversation.
 

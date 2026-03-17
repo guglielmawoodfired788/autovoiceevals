@@ -66,6 +66,7 @@ class PipelineConfig:
 @dataclass
 class ConversationConfig:
     max_turns: int = 12
+    simulate_timeout_secs: int = 300  # ElevenLabs only: total HTTP timeout per conversation
 
 
 @dataclass
@@ -190,6 +191,7 @@ def load_config(path: str | None = None) -> Config:
         ),
         conversation=ConversationConfig(
             max_turns=cv.get("max_turns", 12),
+            simulate_timeout_secs=cv.get("simulate_timeout_secs", 300),
         ),
         llm=LLMConfig(
             model=lm.get("model", "claude-sonnet-4-20250514"),
