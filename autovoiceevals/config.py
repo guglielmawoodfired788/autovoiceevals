@@ -111,7 +111,7 @@ def load_config(path: str | None = None) -> Config:
 
     Raises ValueError on missing required fields or invalid values.
     """
-    load_dotenv(ROOT / ".env", override=True)
+    load_dotenv(ROOT / ".env")
 
     cfg_path = Path(path) if path else ROOT / "config.yaml"
     if not cfg_path.exists():
