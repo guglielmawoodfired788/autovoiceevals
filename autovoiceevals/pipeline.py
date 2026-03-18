@@ -15,7 +15,7 @@ from .config import Config
 from .models import Scenario
 from .scoring import composite_score
 from .evaluator import Evaluator
-from .vapi import VapiClient  # noqa: F401 — used by provider factory
+from .vapi import VapiClient
 from .llm import LLMClient
 from . import display, graphs
 
@@ -29,7 +29,7 @@ def _run_round(
     phase: str,
     scenarios: list[Scenario],
     cfg: Config,
-    vapi,  # VapiClient or SmallestClient
+    provider,
     evaluator: Evaluator,
     all_experiments: list[dict],
     all_failures: set[str],
@@ -50,9 +50,12 @@ def _run_round(
             sc.voice_characteristics,
         )
 
-        conv = vapi.run_conversation(
+        conv = provider.run_conversation(
             cfg.assistant.id, sid,
             sc.caller_script, cfg.conversation.max_turns,
+            scenario=sc,
+            dynamic_variables=cfg.assistant.dynamic_variables,
+            simulate_timeout_secs=cfg.conversation.simulate_timeout_secs,
         )
 
         try:
@@ -142,9 +145,12 @@ def run(cfg: Config) -> None:
 
     if cfg.provider == "smallest":
         from .smallest import SmallestClient
-        vapi = SmallestClient(cfg.smallest_api_key, llm_client=llm)
+        provider = SmallestClient(cfg.smallest_api_key, llm_client=llm)
+    elif cfg.provider == "elevenlabs":
+        from .elevenlabs import ElevenLabsClient
+        provider = ElevenLabsClient(cfg.elevenlabs_api_key)
     else:
-        vapi = VapiClient(cfg.vapi_api_key)
+        provider = VapiClient(cfg.vapi_api_key)
 
     all_experiments: list[dict] = []
     all_failures: set[str] = set()
@@ -152,7 +158,7 @@ def run(cfg: Config) -> None:
     elite_pool: list[tuple] = []
     round_stats: list[dict] = []
 
-    original_prompt = vapi.get_system_prompt(assistant_id)
+    original_prompt = provider.get_system_prompt(assistant_id)
     display.blank()
     display.info(f"Assistant: {cfg.assistant.name or assistant_id}")
     display.info(f"Original prompt: {len(original_prompt)} chars")
@@ -200,7 +206,7 @@ def run(cfg: Config) -> None:
 
         results = _run_round(
             label, "attack", scenarios, cfg,
-            vapi, evaluator, all_experiments, all_failures,
+            provider, evaluator, all_experiments, all_failures,
         )
         for r in results:
             all_issues.extend(r[2].get("issues", []))
@@ -264,10 +270,10 @@ def run(cfg: Config) -> None:
         f"(was {len(original_prompt)})"
     )
 
-    if vapi.update_prompt(assistant_id, improved_prompt):
-        display.info("Vapi assistant updated.")
+    if provider.update_prompt(assistant_id, improved_prompt):
+        display.info("Agent prompt updated.")
     else:
-        display.info("WARNING: Vapi update failed!")
+        display.info("WARNING: Agent update failed!")
 
     # === PHASE C: VERIFY =============================================
 
@@ -315,7 +321,7 @@ def run(cfg: Config) -> None:
 
         results = _run_round(
             label, "verify", scenarios, cfg,
-            vapi, evaluator, all_experiments, all_failures,
+            provider, evaluator, all_experiments, all_failures,
         )
         for r in results:
             all_issues.extend(r[2].get("issues", []))
@@ -352,7 +358,7 @@ def run(cfg: Config) -> None:
 
     display.blank()
     display.info("Restoring original prompt...")
-    vapi.update_prompt(assistant_id, original_prompt)
+    provider.update_prompt(assistant_id, original_prompt)
 
     # Save experiment log
     log = {

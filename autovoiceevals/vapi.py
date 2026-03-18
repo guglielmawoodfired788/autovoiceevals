@@ -50,6 +50,9 @@ class VapiClient:
         scenario_id: str,
         caller_turns: list[str],
         max_turns: int = 12,
+        scenario=None,
+        dynamic_variables=None,
+        simulate_timeout_secs=None,
     ) -> Conversation:
         """Run a multi-turn conversation via the Vapi Chat API."""
         conv = Conversation(scenario_id=scenario_id)

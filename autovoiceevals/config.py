@@ -25,6 +25,11 @@ class AssistantConfig:
     id: str
     description: str
     name: str = ""
+    dynamic_variables: dict = None  # ElevenLabs: injected into simulate-conversation
+
+    def __post_init__(self):
+        if self.dynamic_variables is None:
+            self.dynamic_variables = {}
 
 
 @dataclass
@@ -61,6 +66,7 @@ class PipelineConfig:
 @dataclass
 class ConversationConfig:
     max_turns: int = 12
+    simulate_timeout_secs: int = 300  # ElevenLabs only: total HTTP timeout per conversation
 
 
 @dataclass
@@ -90,10 +96,11 @@ class Config:
     conversation: ConversationConfig
     llm: LLMConfig
     output: OutputConfig
-    provider: str = "vapi"         # "vapi" or "smallest"
+    provider: str = "vapi"         # "vapi", "smallest", or "elevenlabs"
     anthropic_api_key: str = ""
     vapi_api_key: str = ""
     smallest_api_key: str = ""
+    elevenlabs_api_key: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -116,13 +123,14 @@ def load_config(path: str | None = None) -> Config:
 
     # --- Provider ---
     provider = raw.get("provider", "vapi")
-    if provider not in ("vapi", "smallest"):
-        raise ValueError(f"Unknown provider: {provider}. Must be 'vapi' or 'smallest'.")
+    if provider not in ("vapi", "smallest", "elevenlabs"):
+        raise ValueError(f"Unknown provider: {provider}. Must be 'vapi', 'smallest', or 'elevenlabs'.")
 
     # --- API keys (from env only, never from YAML) ---
     anthropic_key = os.environ.get("ANTHROPIC_API_KEY", "")
     vapi_key = os.environ.get("VAPI_API_KEY", "")
     smallest_key = os.environ.get("SMALLEST_API_KEY", "")
+    elevenlabs_key = os.environ.get("ELEVENLABS_API_KEY", "")
 
     if not anthropic_key:
         raise ValueError("ANTHROPIC_API_KEY not set in .env or environment")
@@ -130,6 +138,8 @@ def load_config(path: str | None = None) -> Config:
         raise ValueError("VAPI_API_KEY not set in .env or environment")
     if provider == "smallest" and not smallest_key:
         raise ValueError("SMALLEST_API_KEY not set in .env or environment")
+    if provider == "elevenlabs" and not elevenlabs_key:
+        raise ValueError("ELEVENLABS_API_KEY not set in .env or environment")
 
     # --- Assistant (required) ---
     ast = raw.get("assistant", {})
@@ -165,6 +175,7 @@ def load_config(path: str | None = None) -> Config:
             id=ast["id"],
             description=ast["description"],
             name=ast.get("name", ""),
+            dynamic_variables=ast.get("dynamic_variables", {}),
         ),
         scoring=scoring,
         autoresearch=AutoresearchConfig(
@@ -180,6 +191,7 @@ def load_config(path: str | None = None) -> Config:
         ),
         conversation=ConversationConfig(
             max_turns=cv.get("max_turns", 12),
+            simulate_timeout_secs=cv.get("simulate_timeout_secs", 300),
         ),
         llm=LLMConfig(
             model=lm.get("model", "claude-sonnet-4-20250514"),
@@ -195,4 +207,5 @@ def load_config(path: str | None = None) -> Config:
         anthropic_api_key=anthropic_key,
         vapi_api_key=vapi_key,
         smallest_api_key=smallest_key,
+        elevenlabs_api_key=elevenlabs_key,
     )
